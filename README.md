@@ -122,7 +122,7 @@ Produces chunked SQL files in `sql_chunks/` for pasting into phpPgAdmin.
 
 #### Step 3: Clear & Import Database
 
-In phpPgAdmin SQL tab (one statement at a time):
+In phpPgAdmin SQL tab:
 ```sql
 DELETE FROM entity_validations;
 DELETE FROM metadata_validations;
