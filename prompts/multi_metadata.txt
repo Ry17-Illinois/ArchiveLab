@@ -1,0 +1,11 @@
+Extract metadata from this document and return as JSON with these fields:
+
+{
+  "title": "Main heading or descriptive title of the document",
+  "creator": "Author, sender, or creator of the document", 
+  "subject": "Primary topic or theme discussed",
+  "date": "Date mentioned in document (YYYY-MM-DD format if possible)",
+  "description": "Brief summary of document content and purpose"
+}
+
+Return only valid JSON. If a field cannot be determined, use null.

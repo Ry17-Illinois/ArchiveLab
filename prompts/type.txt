@@ -1,0 +1,1 @@
+Identify the type or format of this document. Examples include: letter, report, photograph, manuscript, article, book, diary entry, official document, etc. Choose the most appropriate document type. Provide 3 different type options, each on a separate line.

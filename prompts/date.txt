@@ -1,0 +1,1 @@
+Extract any dates mentioned in this document. Look for creation dates, publication dates, or significant dates referenced in the content. Format dates as YYYY-MM-DD when possible. Provide 3 different date options, each on a separate line.

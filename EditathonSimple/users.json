@@ -1,0 +1,82 @@
+{
+  "guest1": {
+    "password": "caff8e31fbaa2a6186b230d539b3b577ce7f7995d92c21d2a7c683e8b23a069c",
+    "assigned_pages": {
+      "start": 1,
+      "end": 51
+    },
+    "name": "Guest User 1"
+  },
+  "guest2": {
+    "password": "fa812572c189e6457b09affd8b3286aa061268c061dace993f95d472ceab3337",
+    "assigned_pages": {
+      "start": 52,
+      "end": 102
+    },
+    "name": "Guest User 2"
+  },
+  "guest3": {
+    "password": "fe8b3aa91c0ea53317e2bd9e012e9c154f7d31605e6c5136992e9bee0356ac0e",
+    "assigned_pages": {
+      "start": 103,
+      "end": 153
+    },
+    "name": "Guest User 3"
+  },
+  "guest4": {
+    "password": "a1725f2417f108516f40b55b9d2196a0bdf94c1c0c660c9305089b9d325a3383",
+    "assigned_pages": {
+      "start": 154,
+      "end": 204
+    },
+    "name": "Guest User 4"
+  },
+  "guest5": {
+    "password": "9f9a5bf70319b9600c7020d41950148ffc859c64d27278dc92a3ebf93728ebed",
+    "assigned_pages": {
+      "start": 205,
+      "end": 254
+    },
+    "name": "Guest User 5"
+  },
+  "guest6": {
+    "password": "498c3219c2fb698ad3eb63b5273eddaca3dd8ab1e6b2decd5d2cfef1cb53ea9f",
+    "assigned_pages": {
+      "start": 255,
+      "end": 304
+    },
+    "name": "Guest User 6"
+  },
+  "guest7": {
+    "password": "5095f8c4a2fc200b4f49d05997c4c6b73144dc1c619cdeb54ccca33aadf76f8c",
+    "assigned_pages": {
+      "start": 305,
+      "end": 354
+    },
+    "name": "Guest User 7"
+  },
+  "guest8": {
+    "password": "16493f25e68b0569b09e20a9e6441099fde7a5d10b96af2355e1936a31d3f979",
+    "assigned_pages": {
+      "start": 355,
+      "end": 404
+    },
+    "name": "Guest User 8"
+  },
+  "guest9": {
+    "password": "0295900a3c4f5e090f6f2a74ce19341cbae633a004af0777a2eca3c8594adcfc",
+    "assigned_pages": {
+      "start": 405,
+      "end": 454
+    },
+    "name": "Guest User 9"
+  },
+  "guest10": {
+    "password": "d73162d73148ba4784597dbe65fe4dfd2258d3b3d180250b8775c86a4583efc4",
+    "assigned_pages": {
+      "start": 455,
+      "end": 504
+    },
+    "name": "Guest User 10"
+  }
+}
