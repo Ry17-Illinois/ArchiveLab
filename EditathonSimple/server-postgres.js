@@ -148,6 +148,158 @@ async function verifySession(req, res, next) {
   }
 }
 
+// Get lightweight page list (all pages in database)
+// Returns minimal data for sidebar navigation + completion status for assigned pages
+app.get('/api/pages-list', verifySession, async (req, res) => {
+  try {
+    const { assigned_pages } = req.session;
+    const username = req.session.username;
+
+    const result = await pool.query(`
+      SELECT 
+        p.page_id,
+        p.page_number,
+        p.document_filename,
+        CASE 
+          WHEN p.page_number >= $1 AND p.page_number <= $2 
+          THEN COALESCE(ed.completed_status, 'not_started')
+          ELSE NULL
+        END as completion_status
+      FROM pages p
+      LEFT JOIN edits ed ON p.page_id = ed.page_id AND ed.username = $3
+      ORDER BY p.page_number
+    `, [assigned_pages.start, assigned_pages.end, username]);
+
+    res.json({
+      pages: result.rows,
+      assigned_range: assigned_pages,
+      total: result.rows.length
+    });
+  } catch (err) {
+    console.error('Pages list error:', err);
+    res.status(500).json({ success: false, message: 'Failed to load pages list' });
+  }
+});
+
+// Get full data for a single page (on-demand loading)
+app.get('/api/page/:pageId', verifySession, async (req, res) => {
+  try {
+    const { pageId } = req.params;
+    const { assigned_pages } = req.session;
+    const username = req.session.username;
+
+    const pageResult = await pool.query(`
+      SELECT 
+        p.page_id,
+        p.page_number,
+        p.json_file,
+        p.image_path,
+        p.document_filename,
+        p.dublin_core,
+        p.archival_context,
+        COALESCE(ed.completed_status, 'not_started') as completion_status,
+        ed.last_saved_at,
+        ed.ocr_selected as saved_ocr_selected,
+        ed.transcription as saved_transcription,
+        ed.transcription_edited as saved_transcription_edited,
+        json_agg(DISTINCT jsonb_build_object(
+          'engine_name', o.engine_name,
+          'ocr_text', o.ocr_text
+        )) FILTER (WHERE o.engine_name IS NOT NULL) as ocr_versions,
+        json_agg(DISTINCT jsonb_build_object(
+          'id', e.id,
+          'entity_type', e.entity_type,
+          'entity_name', e.entity_name
+        )) FILTER (WHERE e.id IS NOT NULL) as entities,
+        json_agg(DISTINCT jsonb_build_object(
+          'field_name', mv.field_name,
+          'status', mv.validation_status
+        )) FILTER (WHERE mv.id IS NOT NULL) as metadata_validations,
+        json_agg(DISTINCT jsonb_build_object(
+          'entity_id', ev.entity_id,
+          'status', ev.validation_status
+        )) FILTER (WHERE ev.id IS NOT NULL) as entity_validations
+      FROM pages p
+      LEFT JOIN ocr_versions o ON p.page_id = o.page_id
+      LEFT JOIN entities e ON p.page_id = e.page_id
+      LEFT JOIN edits ed ON p.page_id = ed.page_id AND ed.username = $2
+      LEFT JOIN metadata_validations mv ON ed.id = mv.edit_id
+      LEFT JOIN entity_validations ev ON ed.id = ev.edit_id
+      WHERE p.page_id = $1
+      GROUP BY p.id, p.page_id, p.page_number, p.json_file, p.image_path, p.document_filename, p.dublin_core, p.archival_context, ed.completed_status, ed.last_saved_at, ed.ocr_selected, ed.transcription, ed.transcription_edited
+    `, [pageId, username]);
+
+    if (pageResult.rows.length === 0) {
+      return res.status(404).json({ success: false, message: 'Page not found' });
+    }
+
+    const page = pageResult.rows[0];
+    const isAssigned = page.page_number >= assigned_pages.start && page.page_number <= assigned_pages.end;
+
+    // Transform OCR versions from array to object
+    const ocr_versions = {};
+    if (page.ocr_versions) {
+      page.ocr_versions.forEach(ocr => {
+        ocr_versions[ocr.engine_name] = ocr.ocr_text;
+      });
+    }
+
+    // Transform entities to grouped object
+    const entities_grouped = {};
+    if (page.entities) {
+      page.entities.forEach(ent => {
+        if (!entities_grouped[ent.entity_type]) {
+          entities_grouped[ent.entity_type] = [];
+        }
+        entities_grouped[ent.entity_type].push({
+          id: ent.id,
+          name: ent.entity_name
+        });
+      });
+    }
+
+    // Transform metadata validations to object
+    const metadata_validations_obj = {};
+    if (page.metadata_validations && page.metadata_validations[0]?.field_name) {
+      page.metadata_validations.forEach(mv => {
+        metadata_validations_obj[mv.field_name] = mv.status;
+      });
+    }
+
+    // Transform entity validations to object
+    const entity_validations_obj = {};
+    if (page.entity_validations && page.entity_validations[0]?.entity_id) {
+      page.entity_validations.forEach(ev => {
+        entity_validations_obj[ev.entity_id] = ev.status;
+      });
+    }
+
+    res.json({
+      page_id: page.page_id,
+      page_number: page.page_number,
+      json_file: page.json_file,
+      ocr_versions,
+      entities: entities_grouped,
+      metadata: {
+        dublin_core: page.dublin_core || {},
+        archival_context: page.archival_context || {}
+      },
+      completion_status: page.completion_status,
+      last_saved_at: page.last_saved_at,
+      is_assigned: isAssigned,
+      saved_state: page.saved_ocr_selected ? {
+        ocr_selected: page.saved_ocr_selected,
+        transcription_edited: page.saved_transcription_edited || false,
+        metadata_validations: metadata_validations_obj,
+        entity_validations: entity_validations_obj
+      } : null
+    });
+  } catch (err) {
+    console.error('Page detail error:', err);
+    res.status(500).json({ success: false, message: 'Failed to load page' });
+  }
+});
+
 // Get dataset from database
 app.get('/api/dataset', verifySession, async (req, res) => {
   try {
@@ -458,6 +610,156 @@ app.post('/api/report-issue', verifySession, async (req, res) => {
   } catch (err) {
     console.error('Report issue error:', err);
     res.status(500).json({ success: false, message: 'Failed to report issue' });
+  }
+});
+
+// ===== Document Groups API =====
+
+// Get user's document groups
+app.get('/api/document-groups', verifySession, async (req, res) => {
+  const username = req.session.username;
+  
+  try {
+    const result = await pool.query(
+      'SELECT * FROM document_groups WHERE created_by = $1 ORDER BY start_page',
+      [username]
+    );
+    
+    res.json({ success: true, groups: result.rows });
+  } catch (err) {
+    console.error('Get document groups error:', err);
+    res.status(500).json({ success: false, message: 'Failed to load document groups' });
+  }
+});
+
+// Create a new document group
+app.post('/api/document-groups', verifySession, async (req, res) => {
+  const { start_page, end_page, continues_before, continues_after, dublin_core } = req.body;
+  const username = req.session.username;
+  const { assigned_pages } = req.session;
+  
+  // Validate range is within user's assignment
+  if (!start_page || !end_page || start_page > end_page) {
+    return res.status(400).json({ success: false, message: 'Invalid page range' });
+  }
+  if (start_page < assigned_pages.start || end_page > assigned_pages.end) {
+    return res.status(400).json({ success: false, message: 'Page range must be within your assignment' });
+  }
+  
+  try {
+    // Check for overlapping groups
+    const overlapCheck = await pool.query(
+      `SELECT id FROM document_groups 
+       WHERE created_by = $1 AND start_page <= $3 AND end_page >= $2`,
+      [username, start_page, end_page]
+    );
+    
+    if (overlapCheck.rows.length > 0) {
+      return res.status(400).json({ success: false, message: 'Overlapping group exists. Delete or adjust the existing group first.' });
+    }
+    
+    const result = await pool.query(
+      `INSERT INTO document_groups (created_by, start_page, end_page, continues_before, continues_after, dublin_core)
+       VALUES ($1, $2, $3, $4, $5, $6)
+       RETURNING *`,
+      [username, start_page, end_page, continues_before || false, continues_after || false, dublin_core || {}]
+    );
+    
+    res.json({ success: true, group: result.rows[0] });
+  } catch (err) {
+    console.error('Create document group error:', err);
+    res.status(500).json({ success: false, message: 'Failed to create document group' });
+  }
+});
+
+// Update a document group (metadata, boundaries, continues flags)
+app.put('/api/document-groups/:id', verifySession, async (req, res) => {
+  const { id } = req.params;
+  const { start_page, end_page, continues_before, continues_after, dublin_core } = req.body;
+  const username = req.session.username;
+  const { assigned_pages } = req.session;
+  
+  try {
+    // Verify ownership
+    const ownerCheck = await pool.query(
+      'SELECT id FROM document_groups WHERE id = $1 AND created_by = $2',
+      [parseInt(id), username]
+    );
+    
+    if (ownerCheck.rows.length === 0) {
+      return res.status(403).json({ success: false, message: 'Not your document group' });
+    }
+    
+    // Build update dynamically
+    const updates = [];
+    const values = [];
+    let paramCount = 1;
+    
+    if (start_page !== undefined) {
+      if (start_page < assigned_pages.start) {
+        return res.status(400).json({ success: false, message: 'Start page outside your assignment' });
+      }
+      updates.push(`start_page = $${paramCount++}`);
+      values.push(start_page);
+    }
+    if (end_page !== undefined) {
+      if (end_page > assigned_pages.end) {
+        return res.status(400).json({ success: false, message: 'End page outside your assignment' });
+      }
+      updates.push(`end_page = $${paramCount++}`);
+      values.push(end_page);
+    }
+    if (continues_before !== undefined) {
+      updates.push(`continues_before = $${paramCount++}`);
+      values.push(continues_before);
+    }
+    if (continues_after !== undefined) {
+      updates.push(`continues_after = $${paramCount++}`);
+      values.push(continues_after);
+    }
+    if (dublin_core !== undefined) {
+      updates.push(`dublin_core = $${paramCount++}`);
+      values.push(dublin_core);
+    }
+    
+    if (updates.length === 0) {
+      return res.status(400).json({ success: false, message: 'No fields to update' });
+    }
+    
+    updates.push(`updated_at = NOW()`);
+    values.push(parseInt(id));
+    
+    const result = await pool.query(
+      `UPDATE document_groups SET ${updates.join(', ')} WHERE id = $${paramCount} RETURNING *`,
+      values
+    );
+    
+    res.json({ success: true, group: result.rows[0] });
+  } catch (err) {
+    console.error('Update document group error:', err);
+    res.status(500).json({ success: false, message: 'Failed to update document group' });
+  }
+});
+
+// Delete a document group
+app.delete('/api/document-groups/:id', verifySession, async (req, res) => {
+  const { id } = req.params;
+  const username = req.session.username;
+  
+  try {
+    const result = await pool.query(
+      'DELETE FROM document_groups WHERE id = $1 AND created_by = $2 RETURNING id',
+      [parseInt(id), username]
+    );
+    
+    if (result.rows.length === 0) {
+      return res.status(404).json({ success: false, message: 'Document group not found or not yours' });
+    }
+    
+    res.json({ success: true, message: 'Document group deleted' });
+  } catch (err) {
+    console.error('Delete document group error:', err);
+    res.status(500).json({ success: false, message: 'Failed to delete document group' });
   }
 });
 
@@ -776,9 +1078,13 @@ app.get('/api/admin/export', verifyAdmin, async (req, res) => {
     `);
     
     if (format === 'csv') {
+      // Get document groups for cross-referencing
+      const groupsResult = await pool.query('SELECT * FROM document_groups ORDER BY start_page');
+      const groups = groupsResult.rows;
+      
       // Generate CSV
       const rows = [
-        ['Page ID', 'Page Number', 'JSON File', 'Document', 'Editor', 'Ground Truth Model', 'Transcription', 'Edited', 'Status', 'Metadata Approved', 'Metadata Rejected', 'Entities Approved', 'Entities Rejected', 'Created', 'Updated']
+        ['Page ID', 'Page Number', 'JSON File', 'Document', 'Editor', 'Ground Truth Model', 'Transcription', 'Edited', 'Status', 'Metadata Approved', 'Metadata Rejected', 'Entities Approved', 'Entities Rejected', 'Document Group', 'Group Metadata Title', 'Created', 'Updated']
       ];
       
       result.rows.forEach(row => {
@@ -786,6 +1092,11 @@ app.get('/api/admin/export', verifyAdmin, async (req, res) => {
         const metadataRejected = row.metadata_validations?.filter(m => m.validation_status === 'rejected').length || 0;
         const entitiesApproved = row.entity_validations?.filter(e => e.validation_status === 'approved').length || 0;
         const entitiesRejected = row.entity_validations?.filter(e => e.validation_status === 'rejected').length || 0;
+        
+        // Find document group for this page
+        const group = groups.find(g => row.page_number >= g.start_page && row.page_number <= g.end_page && g.created_by === row.editor);
+        const groupLabel = group ? `Pages ${group.start_page}-${group.end_page}` : '';
+        const groupTitle = group?.dublin_core?.title || '';
         
         rows.push([
           row.page_id,
@@ -801,6 +1112,8 @@ app.get('/api/admin/export', verifyAdmin, async (req, res) => {
           metadataRejected,
           entitiesApproved,
           entitiesRejected,
+          groupLabel,
+          groupTitle,
           row.edit_created || '',
           row.edit_updated || ''
         ]);
@@ -812,7 +1125,15 @@ app.get('/api/admin/export', verifyAdmin, async (req, res) => {
       res.send(csv);
     } else {
       // Return JSON with resolved entity names (ready for merge script)
-      res.json(result.rows);
+      // Also include document groups for complete export
+      const groupsResult = await pool.query(`
+        SELECT * FROM document_groups ORDER BY created_by, start_page
+      `);
+      
+      res.json({
+        edits: result.rows,
+        document_groups: groupsResult.rows
+      });
     }
   } catch (err) {
     console.error('Export error:', err);
@@ -831,25 +1152,51 @@ app.get('/api/admin/progress', async (req, res) => {
   }
 });
 
-// Admin: Export all edits
-app.get('/api/admin/export', async (req, res) => {
+// Admin: Export document groups
+app.get('/api/admin/export-groups', verifyAdmin, async (req, res) => {
   try {
     const result = await pool.query(`
       SELECT 
-        e.*,
-        json_agg(DISTINCT mv.*) FILTER (WHERE mv.id IS NOT NULL) as metadata_validations,
-        json_agg(DISTINCT ev.*) FILTER (WHERE ev.id IS NOT NULL) as entity_validations
-      FROM edits e
-      LEFT JOIN metadata_validations mv ON e.id = mv.edit_id
-      LEFT JOIN entity_validations ev ON e.id = ev.edit_id
-      GROUP BY e.id
-      ORDER BY e.username, e.page_number
+        dg.*,
+        u.name as creator_name
+      FROM document_groups dg
+      LEFT JOIN users u ON dg.created_by = u.username
+      ORDER BY dg.created_by, dg.start_page
     `);
     
-    res.json(result.rows);
+    res.json({ success: true, groups: result.rows });
   } catch (err) {
-    console.error('Export error:', err);
-    res.status(500).json({ success: false, message: 'Failed to export' });
+    console.error('Export groups error:', err);
+    res.status(500).json({ success: false, message: 'Failed to export document groups' });
+  }
+});
+
+// Admin: Export all entities (including user-added ones)
+app.get('/api/admin/export-entities', verifyAdmin, async (req, res) => {
+  try {
+    const result = await pool.query(`
+      SELECT 
+        e.id,
+        e.page_id,
+        e.entity_type,
+        e.entity_name,
+        e.created_at,
+        p.page_number,
+        ev.validation_status,
+        ev.corrected_name,
+        ev.corrected_type,
+        ed.username as validated_by
+      FROM entities e
+      LEFT JOIN pages p ON e.page_id = p.page_id
+      LEFT JOIN entity_validations ev ON e.id = ev.entity_id
+      LEFT JOIN edits ed ON ev.edit_id = ed.id
+      ORDER BY p.page_number, e.entity_type, e.entity_name
+    `);
+    
+    res.json({ success: true, entities: result.rows });
+  } catch (err) {
+    console.error('Export entities error:', err);
+    res.status(500).json({ success: false, message: 'Failed to export entities' });
   }
 });
 
