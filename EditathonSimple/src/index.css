@@ -426,7 +426,7 @@ body {
 .zoom-controls {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
+  gap: 0.4rem;
 }
 
 .zoom-btn {
@@ -454,37 +454,47 @@ body {
   background: #e5e7eb;
 }
 
+.zoom-preset {
+  font-size: 1rem;
+  font-weight: 600;
+}
+
 .zoom-reset {
   width: auto;
   padding: 0 0.75rem;
-  font-size: 0.875rem;
-  font-weight: 500;
+  font-size: 0.8rem;
+  font-weight: 600;
 }
 
 .zoom-level {
-  font-size: 0.875rem;
+  font-size: 0.8rem;
   font-weight: 500;
   color: #6b7280;
-  min-width: 45px;
+  min-width: 42px;
   text-align: center;
 }
 
 /* Facsimile */
 .facsimile-container {
   flex: 1;
-  overflow: auto;
-  padding: 1.5rem;
-  display: flex;
-  justify-content: center;
-  align-items: flex-start;
+  overflow: hidden;
+  position: relative;
   background: #f9fafb;
+  cursor: grab;
+  user-select: none;
+}
+
+.facsimile-container.dragging {
+  cursor: grabbing;
 }
 
 .facsimile-image {
-  height: auto;
   display: block;
+  max-width: none;
   box-shadow: 0 4px 12px rgba(0,0,0,0.1);
   border-radius: 4px;
+  pointer-events: none;
+  transition: none;
 }
 
 /* Transcription Panel */

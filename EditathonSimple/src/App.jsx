@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import Login from './Login';
 import AdminDashboard from './AdminDashboard';
 
@@ -14,7 +14,147 @@ function App() {
   const [entityValidations, setEntityValidations] = useState({});
   const [loading, setLoading] = useState(true);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  const [imageZoom, setImageZoom] = useState(100);
+  
+  // Pan-zoom state
+  const [scale, setScale] = useState(1);
+  const [panX, setPanX] = useState(0);
+  const [panY, setPanY] = useState(0);
+  const [isDragging, setIsDragging] = useState(false);
+  const dragStart = useRef({ x: 0, y: 0 });
+  const panStart = useRef({ x: 0, y: 0 });
+  const containerRef = useRef(null);
+  const imageRef = useRef(null);
+
+  const MIN_SCALE = 0.25;
+  const MAX_SCALE = 5;
+  const ZOOM_STEP = 0.1;
+
+  // Reset pan-zoom when page changes
+  const resetZoom = useCallback(() => {
+    setScale(1);
+    setPanX(0);
+    setPanY(0);
+  }, []);
+
+  // Fit width: scale image to fill container width
+  const fitWidth = useCallback(() => {
+    if (!containerRef.current || !imageRef.current) return;
+    const containerWidth = containerRef.current.clientWidth - 32; // account for padding
+    const imageWidth = imageRef.current.naturalWidth;
+    if (imageWidth > 0) {
+      const newScale = containerWidth / imageWidth;
+      setScale(Math.min(Math.max(newScale, MIN_SCALE), MAX_SCALE));
+      setPanX(0);
+      setPanY(0);
+    }
+  }, []);
+
+  // Fit height: scale image to fill container height
+  const fitHeight = useCallback(() => {
+    if (!containerRef.current || !imageRef.current) return;
+    const containerHeight = containerRef.current.clientHeight - 32;
+    const imageHeight = imageRef.current.naturalHeight;
+    if (imageHeight > 0) {
+      const newScale = containerHeight / imageHeight;
+      setScale(Math.min(Math.max(newScale, MIN_SCALE), MAX_SCALE));
+      setPanX(0);
+      setPanY(0);
+    }
+  }, []);
+
+  // Wheel zoom centered on cursor
+  const handleWheel = useCallback((e) => {
+    e.preventDefault();
+    const container = containerRef.current;
+    if (!container) return;
+
+    const rect = container.getBoundingClientRect();
+    // Cursor position relative to container
+    const cursorX = e.clientX - rect.left;
+    const cursorY = e.clientY - rect.top;
+
+    // Point in image space under cursor before zoom
+    const imgX = (cursorX - panX) / scale;
+    const imgY = (cursorY - panY) / scale;
+
+    // Calculate new scale
+    const delta = e.deltaY > 0 ? -ZOOM_STEP : ZOOM_STEP;
+    const newScale = Math.min(Math.max(scale + delta * scale, MIN_SCALE), MAX_SCALE);
+
+    // Adjust pan so the same image point stays under cursor
+    const newPanX = cursorX - imgX * newScale;
+    const newPanY = cursorY - imgY * newScale;
+
+    setScale(newScale);
+    setPanX(newPanX);
+    setPanY(newPanY);
+  }, [scale, panX, panY]);
+
+  // Double-click to zoom in (or reset if already zoomed)
+  const handleDoubleClick = useCallback((e) => {
+    if (scale > 1.1) {
+      resetZoom();
+    } else {
+      const container = containerRef.current;
+      if (!container) return;
+
+      const rect = container.getBoundingClientRect();
+      const cursorX = e.clientX - rect.left;
+      const cursorY = e.clientY - rect.top;
+
+      const imgX = (cursorX - panX) / scale;
+      const imgY = (cursorY - panY) / scale;
+
+      const newScale = 2.5;
+      const newPanX = cursorX - imgX * newScale;
+      const newPanY = cursorY - imgY * newScale;
+
+      setScale(newScale);
+      setPanX(newPanX);
+      setPanY(newPanY);
+    }
+  }, [scale, panX, panY, resetZoom]);
+
+  // Drag to pan
+  const handleMouseDown = useCallback((e) => {
+    if (e.button !== 0) return; // left click only
+    setIsDragging(true);
+    dragStart.current = { x: e.clientX, y: e.clientY };
+    panStart.current = { x: panX, y: panY };
+    e.preventDefault();
+  }, [panX, panY]);
+
+  const handleMouseMove = useCallback((e) => {
+    if (!isDragging) return;
+    const dx = e.clientX - dragStart.current.x;
+    const dy = e.clientY - dragStart.current.y;
+    setPanX(panStart.current.x + dx);
+    setPanY(panStart.current.y + dy);
+  }, [isDragging]);
+
+  const handleMouseUp = useCallback(() => {
+    setIsDragging(false);
+  }, []);
+
+  // Attach wheel listener with passive: false to allow preventDefault
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+    container.addEventListener('wheel', handleWheel, { passive: false });
+    return () => container.removeEventListener('wheel', handleWheel);
+  }, [handleWheel]);
+
+  // Global mouse up/move for drag (in case mouse leaves container)
+  useEffect(() => {
+    if (isDragging) {
+      window.addEventListener('mousemove', handleMouseMove);
+      window.addEventListener('mouseup', handleMouseUp);
+      return () => {
+        window.removeEventListener('mousemove', handleMouseMove);
+        window.removeEventListener('mouseup', handleMouseUp);
+      };
+    }
+  }, [isDragging, handleMouseMove, handleMouseUp]);
 
   // Check for existing session
   useEffect(() => {
@@ -134,6 +274,9 @@ function App() {
   };
 
   const loadPageData = (page) => {
+    // Reset zoom when changing pages
+    resetZoom();
+    
     // Check if there's a human-reviewed version
     if (page.ocr_versions['Human-Reviewed']) {
       // Load the human-reviewed version
@@ -447,35 +590,75 @@ function App() {
                 <h3>Facsimile - Page {currentPage.page_number}</h3>
                 <div className="zoom-controls">
                   <button 
-                    onClick={() => setImageZoom(Math.max(25, imageZoom - 25))}
+                    onClick={() => {
+                      const newScale = Math.max(MIN_SCALE, scale - 0.1 * scale);
+                      setScale(newScale);
+                    }}
                     className="zoom-btn"
                     title="Zoom Out"
                   >
                     −
                   </button>
-                  <span className="zoom-level">{imageZoom}%</span>
+                  <span className="zoom-level">{Math.round(scale * 100)}%</span>
                   <button 
-                    onClick={() => setImageZoom(Math.min(200, imageZoom + 25))}
+                    onClick={() => {
+                      const newScale = Math.min(MAX_SCALE, scale + 0.1 * scale);
+                      setScale(newScale);
+                    }}
                     className="zoom-btn"
                     title="Zoom In"
                   >
                     +
                   </button>
                   <button 
-                    onClick={() => setImageZoom(100)}
-                    className="zoom-btn zoom-reset"
-                    title="Reset Zoom"
+                    onClick={fitWidth}
+                    className="zoom-btn zoom-preset"
+                    title="Fit Width"
                   >
-                    Reset
+                    ↔
+                  </button>
+                  <button 
+                    onClick={fitHeight}
+                    className="zoom-btn zoom-preset"
+                    title="Fit Height"
+                  >
+                    ↕
+                  </button>
+                  <button 
+                    onClick={resetZoom}
+                    className="zoom-btn zoom-reset"
+                    title="Reset Zoom (1:1)"
+                  >
+                    1:1
                   </button>
                 </div>
               </div>
-              <div className="facsimile-container">
+              <div 
+                className={`facsimile-container ${isDragging ? 'dragging' : ''}`}
+                ref={containerRef}
+                onMouseDown={handleMouseDown}
+                onDoubleClick={handleDoubleClick}
+              >
                 <img 
                   src={`/data/images/${currentPage.page_id}.jpg`}
                   alt={`Page ${currentPage.page_number}`}
                   className="facsimile-image"
-                  style={{ width: `${imageZoom}%` }}
+                  ref={imageRef}
+                  onLoad={() => {
+                    // Auto fit-width on first load if image is wider than container
+                    if (containerRef.current && imageRef.current && scale === 1) {
+                      const containerWidth = containerRef.current.clientWidth - 32;
+                      const imageWidth = imageRef.current.naturalWidth;
+                      if (imageWidth > containerWidth) {
+                        fitWidth();
+                      }
+                    }
+                  }}
+                  style={{
+                    transform: `translate(${panX}px, ${panY}px) scale(${scale})`,
+                    transformOrigin: '0 0',
+                  }}
+                  draggable={false}
                 />
               </div>
             </div>
