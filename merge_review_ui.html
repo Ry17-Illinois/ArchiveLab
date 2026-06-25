@@ -1,0 +1,571 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Entity Merge Review</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  background: #f5f5f5;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.header {
+  background: #1e40af;
+  color: white;
+  padding: 0.75rem 1.5rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.header h1 { font-size: 1.3rem; }
+
+.header-actions { display: flex; gap: 0.5rem; align-items: center; }
+
+.btn {
+  padding: 0.4rem 0.9rem;
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
+  font-size: 0.8rem;
+  font-weight: 600;
+  transition: background 0.2s;
+}
+
+.btn-primary { background: #3b82f6; color: white; }
+.btn-primary:hover { background: #2563eb; }
+.btn-success { background: #059669; color: white; }
+.btn-success:hover { background: #047857; }
+.btn-secondary { background: rgba(255,255,255,0.2); color: white; border: 1px solid rgba(255,255,255,0.3); }
+.btn-secondary:hover { background: rgba(255,255,255,0.3); }
+.btn-danger { background: #ef4444; color: white; }
+.btn-danger:hover { background: #dc2626; }
+.btn-small { padding: 0.2rem 0.5rem; font-size: 0.7rem; }
+
+.stats-bar {
+  display: flex;
+  gap: 1.5rem;
+  padding: 0.5rem 1.5rem;
+  background: white;
+  border-bottom: 1px solid #e5e7eb;
+  font-size: 0.8rem;
+  color: #374151;
+  flex-shrink: 0;
+}
+
+.stats-bar span { font-weight: 700; color: #1e40af; }
+
+.main-layout {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+}
+
+/* Column panels */
+.column-panel {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid #e5e7eb;
+  overflow: hidden;
+}
+
+.column-panel:last-child { border-right: none; }
+
+.column-header {
+  padding: 0.6rem 1rem;
+  background: #fafafa;
+  border-bottom: 1px solid #e5e7eb;
+  flex-shrink: 0;
+}
+
+.column-header h2 {
+  font-size: 0.9rem;
+  margin-bottom: 0.4rem;
+  color: #374151;
+}
+
+.column-search {
+  width: 100%;
+  padding: 0.4rem 0.6rem;
+  border: 1px solid #d1d5db;
+  border-radius: 5px;
+  font-size: 0.8rem;
+}
+
+.column-search:focus { outline: none; border-color: #2563eb; box-shadow: 0 0 0 2px rgba(37,99,235,0.1); }
+
+.column-filter {
+  display: flex;
+  gap: 0.4rem;
+  margin-top: 0.4rem;
+}
+
+.column-filter select {
+  padding: 0.3rem 0.5rem;
+  border: 1px solid #d1d5db;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  flex: 1;
+}
+
+.column-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0.5rem;
+}
+
+/* Cluster cards */
+.cluster {
+  background: white;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  padding: 0.6rem;
+  margin-bottom: 0.4rem;
+  transition: all 0.15s;
+}
+
+.cluster.drag-over {
+  border-color: #2563eb;
+  background: #eff6ff;
+  box-shadow: 0 0 0 2px rgba(37,99,235,0.15);
+}
+
+.cluster.approved { border-left: 3px solid #10b981; }
+.cluster.rejected-cluster { border-left: 3px solid #ef4444; opacity: 0.6; }
+.cluster.pending { border-left: 3px solid #f59e0b; }
+
+.cluster-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.35rem;
+}
+
+.cluster-title {
+  font-weight: 700;
+  font-size: 0.85rem;
+  color: #1f2937;
+}
+
+.cluster-count {
+  font-size: 0.7rem;
+  color: #6b7280;
+  margin-left: 0.4rem;
+}
+
+.cluster-actions { display: flex; gap: 0.2rem; }
+.cluster-actions button {
+  padding: 0.15rem 0.4rem;
+  font-size: 0.65rem;
+  border-radius: 3px;
+  border: 1px solid #d1d5db;
+  background: white;
+  cursor: pointer;
+}
+.cluster-actions button:hover { background: #f3f4f6; }
+.cluster-actions .active-approve { background: #d1fae5; border-color: #10b981; color: #065f46; }
+.cluster-actions .active-reject { background: #fee2e2; border-color: #ef4444; color: #991b1b; }
+
+.variants {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  min-height: 24px;
+}
+
+.entity-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  padding: 0.2rem 0.5rem;
+  background: #f3f4f6;
+  border: 1px solid #d1d5db;
+  border-radius: 12px;
+  font-size: 0.75rem;
+  cursor: grab;
+  user-select: none;
+  transition: all 0.1s;
+}
+
+.entity-chip:active { cursor: grabbing; }
+.entity-chip.dragging { opacity: 0.3; }
+.entity-chip:hover { background: #e5e7eb; border-color: #9ca3af; }
+
+.entity-chip .chip-count {
+  font-size: 0.65rem;
+  color: #6b7280;
+  background: #e5e7eb;
+  padding: 0 0.25rem;
+  border-radius: 6px;
+}
+
+.entity-chip.canonical-chip {
+  background: #dbeafe;
+  border-color: #93c5fd;
+  font-weight: 600;
+}
+
+/* Special zones */
+.drop-zone {
+  border: 2px dashed #d1d5db;
+  border-radius: 6px;
+  padding: 0.6rem;
+  margin-bottom: 0.4rem;
+  min-height: 40px;
+  transition: all 0.15s;
+  text-align: center;
+}
+
+.drop-zone.drag-over {
+  border-color: #2563eb;
+  background: #eff6ff;
+}
+
+.drop-zone-new { border-color: #86efac; }
+.drop-zone-new.drag-over { border-color: #10b981; background: #f0fdf4; }
+.drop-zone-reject { border-color: #fca5a5; }
+.drop-zone-reject.drag-over { border-color: #ef4444; background: #fef2f2; }
+
+.drop-zone-label {
+  font-size: 0.7rem;
+  color: #9ca3af;
+  font-weight: 500;
+}
+
+/* Rejected entities in panel */
+.rejected-section { margin-top: 0.5rem; }
+.rejected-section h4 {
+  font-size: 0.75rem;
+  color: #991b1b;
+  margin-bottom: 0.3rem;
+  padding-bottom: 0.3rem;
+  border-bottom: 1px solid #fee2e2;
+}
+
+.rejected-chip {
+  background: #fee2e2;
+  border-color: #fca5a5;
+}
+
+/* Middle transfer zone */
+.transfer-panel {
+  width: 60px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  flex-shrink: 0;
+  background: #fafafa;
+  border-left: 1px solid #e5e7eb;
+  border-right: 1px solid #e5e7eb;
+  padding: 0.5rem;
+}
+
+.transfer-panel .arrow {
+  font-size: 1.2rem;
+  color: #9ca3af;
+}
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>Entity Merge Review</h1>
+  <div class="header-actions">
+    <label class="btn btn-secondary" style="cursor:pointer">
+      Load JSON <input type="file" id="loadFile" accept=".json" style="display:none">
+    </label>
+    <button class="btn btn-primary" onclick="approveAll()">Approve All</button>
+    <button class="btn btn-success" onclick="exportApproved()">Export Approved</button>
+  </div>
+</div>
+
+<div class="stats-bar" id="stats"></div>
+
+<div class="main-layout">
+  <!-- Left Column -->
+  <div class="column-panel">
+    <div class="column-header">
+      <h2>Column A</h2>
+      <input type="text" class="column-search" id="searchA" placeholder="Search clusters..." oninput="renderColumn('A')">
+      <div class="column-filter">
+        <select id="filterA" onchange="renderColumn('A')">
+          <option value="all">All</option>
+          <option value="pending">Pending</option>
+          <option value="approved">Approved</option>
+          <option value="rejected">Rejected</option>
+          <option value="multi">Multi-variant</option>
+        </select>
+        <select id="sortA" onchange="renderColumn('A')">
+          <option value="variants">By variants</option>
+          <option value="mentions">By mentions</option>
+          <option value="alpha">A-Z</option>
+        </select>
+      </div>
+    </div>
+    <div class="column-body" id="columnA"></div>
+  </div>
+
+  <!-- Right Column -->
+  <div class="column-panel">
+    <div class="column-header">
+      <h2>Column B</h2>
+      <input type="text" class="column-search" id="searchB" placeholder="Search clusters..." oninput="renderColumn('B')">
+      <div class="column-filter">
+        <select id="filterB" onchange="renderColumn('B')">
+          <option value="all">All</option>
+          <option value="pending">Pending</option>
+          <option value="approved">Approved</option>
+          <option value="rejected">Rejected</option>
+          <option value="multi">Multi-variant</option>
+        </select>
+        <select id="sortB" onchange="renderColumn('B')">
+          <option value="variants">By variants</option>
+          <option value="mentions">By mentions</option>
+          <option value="alpha">A-Z</option>
+        </select>
+      </div>
+    </div>
+    <div class="column-body" id="columnB"></div>
+  </div>
+</div>
+
+<script>
+let data = null;
+
+document.getElementById('loadFile').addEventListener('change', function(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = function(ev) {
+    data = JSON.parse(ev.target.result);
+    renderAll();
+  };
+  reader.readAsText(file);
+});
+
+function renderAll() {
+  renderStats();
+  renderColumn('A');
+  renderColumn('B');
+}
+
+function renderStats() {
+  if (!data) return;
+  const total = data.clusters.length;
+  const pending = data.clusters.filter(c => c.status === 'pending').length;
+  const approved = data.clusters.filter(c => c.status === 'approved').length;
+  const rejected = data.clusters.filter(c => c.status === 'rejected').length;
+  const rejNames = (data.rejected_names || []).filter(r => !r.restore).length;
+  document.getElementById('stats').innerHTML = 
+    `Clusters: <span>${total}</span> | Pending: <span>${pending}</span> | Approved: <span>${approved}</span> | Rejected: <span>${rejected}</span> | False positives: <span>${rejNames}</span>`;
+}
+
+function getFilteredClusters(col) {
+  if (!data) return [];
+  const search = document.getElementById('search' + col).value.toLowerCase();
+  const filter = document.getElementById('filter' + col).value;
+  const sort = document.getElementById('sort' + col).value;
+
+  let clusters = data.clusters.map((c, i) => ({...c, _idx: i}));
+
+  if (filter === 'pending') clusters = clusters.filter(c => c.status === 'pending');
+  else if (filter === 'approved') clusters = clusters.filter(c => c.status === 'approved');
+  else if (filter === 'rejected') clusters = clusters.filter(c => c.status === 'rejected');
+  else if (filter === 'multi') clusters = clusters.filter(c => c.variants.length > 0);
+
+  if (search) {
+    clusters = clusters.filter(c => {
+      if (c.canonical.toLowerCase().includes(search)) return true;
+      return c.variants.some(v => v.name.toLowerCase().includes(search));
+    });
+  }
+
+  if (sort === 'variants') clusters.sort((a, b) => b.variants.length - a.variants.length);
+  else if (sort === 'mentions') clusters.sort((a, b) => b.canonical_mentions - a.canonical_mentions);
+  else if (sort === 'alpha') clusters.sort((a, b) => a.canonical.localeCompare(b.canonical));
+
+  return clusters;
+}
+
+function renderColumn(col) {
+  const panel = document.getElementById('column' + col);
+  const clusters = getFilteredClusters(col);
+
+  let html = '';
+
+  // New group drop zone at top
+  html += `<div class="drop-zone drop-zone-new" 
+    ondragover="dzOver(event)" ondragleave="dzLeave(event)" ondrop="dropNewGroup(event)">
+    <span class="drop-zone-label">+ Drop here to create new group</span>
+  </div>`;
+
+  // Cluster cards
+  html += clusters.map(c => {
+    const statusClass = c.status === 'rejected' ? 'rejected-cluster' : (c.status || 'pending');
+    const variants = c.variants.filter(v => v.action !== 'reject');
+    return `
+      <div class="cluster ${statusClass}" 
+           ondragover="dzOver(event)" ondragleave="dzLeave(event)" ondrop="dropOnCluster(event, ${c._idx})">
+        <div class="cluster-header">
+          <div>
+            <span class="cluster-title">${esc(c.canonical)}</span>
+            <span class="cluster-count">${c.canonical_mentions} mentions | ${variants.length + 1} names</span>
+          </div>
+          <div class="cluster-actions">
+            <button class="${c.status === 'approved' ? 'active-approve' : ''}" onclick="toggleStatus(${c._idx}, 'approved')">✓</button>
+            <button class="${c.status === 'rejected' ? 'active-reject' : ''}" onclick="toggleStatus(${c._idx}, 'rejected')">✗</button>
+          </div>
+        </div>
+        <div class="variants">
+          <div class="entity-chip canonical-chip" draggable="true"
+               ondragstart="startDrag(event, ${c._idx}, '${escAttr(c.canonical)}', ${c.canonical_mentions}, true)">
+            ${esc(c.canonical)} <span class="chip-count">${c.canonical_mentions}</span>
+          </div>
+          ${variants.map(v => `
+            <div class="entity-chip" draggable="true"
+                 ondragstart="startDrag(event, ${c._idx}, '${escAttr(v.name)}', ${v.mentions}, false)">
+              ${esc(v.name)} <span class="chip-count">${v.mentions}</span>
+            </div>
+          `).join('')}
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  // Rejected zone at bottom
+  html += `<div class="drop-zone drop-zone-reject"
+    ondragover="dzOver(event)" ondragleave="dzLeave(event)" ondrop="dropReject(event)">
+    <span class="drop-zone-label">Drop here to reject</span>
+  </div>`;
+
+  // Show rejected entities
+  const rejectedNames = (data.rejected_names || []).filter(r => !r.restore);
+  if (rejectedNames.length > 0) {
+    html += `<div class="rejected-section"><h4>Rejected (${rejectedNames.length})</h4><div class="variants">`;
+    html += rejectedNames.slice(0, 50).map(r => `
+      <div class="entity-chip rejected-chip" draggable="true"
+           ondragstart="startDragRejected(event, '${escAttr(r.name)}', ${r.mentions})">
+        ${esc(r.name)} <span class="chip-count">${r.mentions}</span>
+      </div>
+    `).join('');
+    if (rejectedNames.length > 50) html += `<div class="entity-chip">...and ${rejectedNames.length - 50} more</div>`;
+    html += `</div></div>`;
+  }
+
+  panel.innerHTML = html;
+}
+
+// Drag state
+let dragInfo = null;
+
+function startDrag(event, clusterIdx, name, mentions, isCanonical) {
+  dragInfo = { from: 'cluster', clusterIdx, name, mentions, isCanonical };
+  event.dataTransfer.effectAllowed = 'move';
+  setTimeout(() => event.target.classList.add('dragging'), 0);
+}
+
+function startDragRejected(event, name, mentions) {
+  dragInfo = { from: 'rejected', name, mentions };
+  event.dataTransfer.effectAllowed = 'move';
+  setTimeout(() => event.target.classList.add('dragging'), 0);
+}
+
+function dzOver(event) { event.preventDefault(); event.currentTarget.classList.add('drag-over'); }
+function dzLeave(event) { event.currentTarget.classList.remove('drag-over'); }
+
+function dropOnCluster(event, targetIdx) {
+  event.preventDefault();
+  event.currentTarget.classList.remove('drag-over');
+  if (!dragInfo) return;
+  if (dragInfo.from === 'cluster' && dragInfo.clusterIdx === targetIdx) { dragInfo = null; return; }
+
+  removeFromSource();
+  data.clusters[targetIdx].variants.push({ name: dragInfo.name, mentions: dragInfo.mentions, action: 'merge', move_to: '' });
+  dragInfo = null;
+  renderAll();
+}
+
+function dropNewGroup(event) {
+  event.preventDefault();
+  event.currentTarget.classList.remove('drag-over');
+  if (!dragInfo) return;
+
+  removeFromSource();
+  data.clusters.push({
+    canonical: dragInfo.name,
+    status: 'approved',
+    canonical_mentions: dragInfo.mentions,
+    variants: []
+  });
+  dragInfo = null;
+  renderAll();
+}
+
+function dropReject(event) {
+  event.preventDefault();
+  event.currentTarget.classList.remove('drag-over');
+  if (!dragInfo) return;
+  if (dragInfo.from === 'rejected') { dragInfo = null; return; }
+
+  removeFromSource();
+  data.rejected_names.push({ name: dragInfo.name, mentions: dragInfo.mentions, restore: false });
+  dragInfo = null;
+  renderAll();
+}
+
+function removeFromSource() {
+  if (!dragInfo) return;
+  if (dragInfo.from === 'cluster') {
+    const cluster = data.clusters[dragInfo.clusterIdx];
+    if (dragInfo.isCanonical) {
+      if (cluster.variants.length > 0) {
+        const promoted = cluster.variants.shift();
+        cluster.canonical = promoted.name;
+        cluster.canonical_mentions = promoted.mentions;
+      } else {
+        data.clusters.splice(dragInfo.clusterIdx, 1);
+      }
+    } else {
+      cluster.variants = cluster.variants.filter(v => v.name !== dragInfo.name);
+    }
+  } else if (dragInfo.from === 'rejected') {
+    data.rejected_names = data.rejected_names.filter(r => r.name !== dragInfo.name);
+  }
+}
+
+function toggleStatus(idx, status) {
+  data.clusters[idx].status = (data.clusters[idx].status === status) ? 'pending' : status;
+  renderAll();
+}
+
+function approveAll() {
+  if (!data) return;
+  data.clusters.forEach(c => { if (c.status === 'pending') c.status = 'approved'; });
+  renderAll();
+}
+
+function exportApproved() {
+  if (!data) return;
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'entity_merges_approved.json';
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function esc(s) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+function escAttr(s) { return s.replace(/\\/g,'\\\\').replace(/'/g,"\\'").replace(/"/g,'\\"'); }
+</script>
+</body>
+</html>
